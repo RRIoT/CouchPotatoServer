@@ -25,6 +25,8 @@ import re
 
 subtitle_exts = [ 'srt', 'idx', 'sub', 'ssa' ]
 
+info_exts = [ 'nfo' ]
+
 video_exts = ['3g2', '3gp', '3gp2', 'asf', 'avi', 'divx', 'flv', 'm4v', 'mk2',
               'mka', 'mkv', 'mov', 'mp4', 'mp4a', 'mpeg', 'mpg', 'ogg', 'ogm',
               'ogv', 'qt', 'ra', 'ram', 'rm', 'ts', 'wav', 'webm', 'wma', 'wmv']
@@ -32,7 +34,7 @@ video_exts = ['3g2', '3gp', '3gp2', 'asf', 'avi', 'divx', 'flv', 'm4v', 'mk2',
 group_delimiters = [ '()', '[]', '{}' ]
 
 # separator character regexp
-sep = r'[][)(}{+ /\._-]' # regexp art, hehe :D
+sep = r'[][,)(}{+ /\._-]' # regexp art, hehe :D
 
 # character used to represent a deleted char (when matching groups)
 deleted = '_'
@@ -43,13 +45,13 @@ episode_rexps = [ # ... Season 2 ...
                   (r'saison (?P<season>[0-9]+)', 1.0, (0, 0)),
 
                   # ... s02e13 ...
-                  (r'[Ss](?P<season>[0-9]{1,2}).?(?P<episodeNumber>(?:[Ee-][0-9]{1,2})+)[^0-9]', 1.0, (0, -1)),
+                  (r'[Ss](?P<season>[0-9]{1,3})[^0-9]?(?P<episodeNumber>(?:-?[eE-][0-9]{1,3})+)[^0-9]', 1.0, (0, -1)),
 
-                  # ... s03-x02 ...
-                  (r'[Ss](?P<season>[0-9]{1,2}).?(?P<bonusNumber>(?:[Xx][0-9]{1,2})+)[^0-9]', 1.0, (0, -1)),
+                  # ... s03-x02 ... # FIXME: redundant? remove it?
+                  #(r'[Ss](?P<season>[0-9]{1,3})[^0-9]?(?P<bonusNumber>(?:-?[xX-][0-9]{1,3})+)[^0-9]', 1.0, (0, -1)),
 
                   # ... 2x13 ...
-                  (r'[^0-9](?P<season>[0-9]{1,2}).?(?P<episodeNumber>(?:[xX][0-9]{1,2})+)[^0-9]', 0.8, (1, -1)),
+                  (r'[^0-9](?P<season>[0-9]{1,2})[^0-9 .-]?(?P<episodeNumber>(?:-?[xX][0-9]{1,3})+)[^0-9]', 1.0, (1, -1)),
 
                   # ... s02 ...
                   #(sep + r's(?P<season>[0-9]{1,2})' + sep, 0.6, (1, -1)),
@@ -122,20 +124,28 @@ prop_multi = { 'format': { 'DVD': [ 'DVD', 'DVD-Rip', 'VIDEO-TS', 'DVDivX' ],
                            'VHS': [ 'VHS' ],
                            'WEB-DL': [ 'WEB-DL' ] },
 
-               'screenSize': { '480p': [ '480p?' ],
-                               '720p': [ '720p?' ],
-                               '1080p': [ '1080p?' ] },
+               'is3D': { True: [ '3D' ] },
+
+               'screenSize': { '480p': [ '480[pi]?' ],
+                               '720p': [ '720[pi]?' ],
+                               '1080i': [ '1080i' ],
+                               '1080p': [ '1080p', '1080[^i]' ] },
 
                'videoCodec': { 'XviD': [ 'Xvid' ],
                                'DivX': [ 'DVDivX', 'DivX' ],
                                'h264': [ '[hx]-264' ],
-                               'Rv10': [ 'Rv10' ] },
+                               'Rv10': [ 'Rv10' ],
+                               'Mpeg2': [ 'Mpeg2' ] },
+
+               # has nothing to do here (or on filenames for that matter), but some
+               # releases use it and it helps to identify release groups, so we adapt
+               'videoApi': {  'DXVA': [ 'DXVA' ] },
 
                'audioCodec': { 'AC3': [ 'AC3' ],
                                'DTS': [ 'DTS' ],
                                'AAC': [ 'He-AAC', 'AAC-He', 'AAC' ] },
 
-               'audioChannels': { '5.1': [ r'5\.1', 'DD5\.1', '5ch' ] },
+               'audioChannels': { '5.1': [ r'5\.1', 'DD5[._ ]1', '5ch' ] },
 
                'episodeFormat': { 'Minisode': [ 'Minisodes?' ] }
 
@@ -143,14 +153,21 @@ prop_multi = { 'format': { 'DVD': [ 'DVD', 'DVD-Rip', 'VIDEO-TS', 'DVDivX' ],
 
 # prop_single dict of { property_name: [ canonical_form ] }
 prop_single = { 'releaseGroup': [ 'ESiR', 'WAF', 'SEPTiC', r'\[XCT\]', 'iNT', 'PUKKA',
-                                  'CHD', 'ViTE', 'TLF', 'DEiTY', 'FLAiTE',
-                                  'MDX', 'GM4F', 'DVL', 'SVD', 'iLUMiNADOS', 'FiNaLe',
-                                  'UnSeeN', 'aXXo', 'KLAXXON', 'NoTV', 'ZeaL', 'LOL',
-                                  'SiNNERS', 'DiRTY', 'REWARD', 'ECI', 'KiNGS', 'CLUE',
-                                  'CtrlHD', 'POD', 'WiKi', 'DIMENSION', 'IMMERSE', 'FQM',
-                                  '2HD', 'REPTiLE', 'CTU', 'HALCYON', 'EbP', 'SiTV',
-                                  'SAiNTS', 'HDBRiSe', 'AlFleNi-TeaM', 'EVOLVE', '0TV',
-                                  'TLA', 'NTB', 'ASAP', 'MOMENTUM', 'FoV', 'D-Z0N3' ],
+                                  'CHD', 'ViTE', 'TLF', 'FLAiTE',
+                                  'MDX', 'GM4F', 'DVL', 'SVD', 'iLUMiNADOS',
+                                  'aXXo', 'KLAXXON', 'NoTV', 'ZeaL', 'LOL',
+                                  'CtrlHD', 'POD', 'WiKi','IMMERSE', 'FQM',
+                                  '2HD',  'CTU', 'HALCYON', 'EbP', 'SiTV',
+                                  'HDBRiSe', 'AlFleNi-TeaM', 'EVOLVE', '0TV',
+                                  'TLA', 'NTB', 'ASAP', 'MOMENTUM', 'FoV', 'D-Z0N3',
+                                  'TrollHD', 'ECI'
+                                  ],
+
+                # potentially confusing release group names (they are words)
+                'weakReleaseGroup': [ 'DEiTY', 'FiNaLe', 'UnSeeN', 'KiNGS', 'CLUE', 'DIMENSION',
+                                      'SAiNTS', 'ARROW', 'EuReKA', 'SiNNERS', 'DiRTY', 'REWARD',
+                                      'REPTiLE',
+                                      ],
 
                 'other': [ 'PROPER', 'REPACK', 'LIMITED', 'DualAudio', 'Audiofixed', 'R5',
                            'complete', 'classic', # not so sure about these ones, could appear in a title
@@ -158,7 +175,7 @@ prop_single = { 'releaseGroup': [ 'ESiR', 'WAF', 'SEPTiC', r'\[XCT\]', 'iNT', 'P
                 }
 
 _dash = '-'
-_psep = '[-\. _]?'
+_psep = '[-. _]?'
 
 def _to_rexp(prop):
     return re.compile(prop.replace(_dash, _psep), re.IGNORECASE)
@@ -179,6 +196,10 @@ properties_rexps.update(dict((type, dict((canonical_form, [ _to_rexp(canonical_f
 def find_properties(string):
     result = []
     for property_name, props in properties_rexps.items():
+        # FIXME: this should be done in a more flexible way...
+        if property_name in ['weakReleaseGroup']:
+            continue
+
         for canonical_form, rexps in props.items():
             for value_rexp in rexps:
                 match = value_rexp.search(string)
@@ -221,8 +242,9 @@ def canonical_form(string):
 def compute_canonical_form(property_name, value):
     """Return the canonical form of a property given its type if it is a valid
     one, None otherwise."""
-    for canonical_form, rexps in properties_rexps[property_name].items():
-        for rexp in rexps:
-            if rexp.match(value):
-                return canonical_form
+    if isinstance(value, basestring):
+        for canonical_form, rexps in properties_rexps[property_name].items():
+            for rexp in rexps:
+                if rexp.match(value):
+                    return canonical_form
     return None

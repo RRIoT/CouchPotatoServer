@@ -7,24 +7,36 @@ requests.exceptions
 This module contains the set of Requests' exceptions.
 
 """
+from .packages.urllib3.exceptions import HTTPError as BaseHTTPError
 
 
-class RequestException(RuntimeError):
+class RequestException(IOError):
     """There was an ambiguous exception that occurred while handling your
     request."""
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize RequestException with `request` and `response` objects.
+        """
+        response = kwargs.pop('response', None)
+        self.response = response
+        self.request = kwargs.pop('request', None)
+        if (response is not None and not self.request and
+                hasattr(response, 'request')):
+            self.request = self.response.request
+        super(RequestException, self).__init__(*args, **kwargs)
 
 
 class HTTPError(RequestException):
     """An HTTP error occurred."""
 
-    def __init__(self, *args, **kwargs):
-        """ Initializes HTTPError with optional `response` object. """
-        self.response = kwargs.pop('response', None)
-        super(HTTPError, self).__init__(*args, **kwargs)
-
 
 class ConnectionError(RequestException):
     """A Connection error occurred."""
+
+
+class ProxyError(ConnectionError):
+    """A proxy error occurred."""
 
 
 class SSLError(ConnectionError):
@@ -32,7 +44,22 @@ class SSLError(ConnectionError):
 
 
 class Timeout(RequestException):
-    """The request timed out."""
+    """The request timed out.
+
+    Catching this error will catch both :exc:`ConnectTimeout` and
+    :exc:`ReadTimeout` errors.
+    """
+
+
+class ConnectTimeout(ConnectionError, Timeout):
+    """The request timed out while trying to connect to the server.
+
+    Requests that produce this error are safe to retry
+    """
+
+
+class ReadTimeout(Timeout):
+    """The server did not send any data in the allotted amount of time."""
 
 
 class URLRequired(RequestException):
@@ -53,3 +80,11 @@ class InvalidSchema(RequestException, ValueError):
 
 class InvalidURL(RequestException, ValueError):
     """ The URL provided was somehow invalid. """
+
+
+class ChunkedEncodingError(RequestException):
+    """The server declared chunked encoding but sent an invalid chunk."""
+
+
+class ContentDecodingError(RequestException, BaseHTTPError):
+    """Failed to decode response content"""

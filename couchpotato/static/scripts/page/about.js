@@ -6,14 +6,14 @@ var AboutSettingTab = new Class({
 	initialize: function(){
 		var self = this;
 
-		App.addEvent('load', self.addSettings.bind(self))
+		App.addEvent('loadSettings', self.addSettings.bind(self))
 
 	},
 
 	addSettings: function(){
 		var self = this;
 
-		self.settings = App.getPage('Settings')
+		self.settings = App.getPage('Settings');
 		self.settings.addEvent('create', function(){
 			var tab = self.settings.createTab('about', {
 				'label': 'About',
@@ -72,7 +72,7 @@ var AboutSettingTab = new Class({
 		);
 
 		if(!self.fillVersion(Updater.getInfo()))
-			Updater.addEvent('loaded', self.fillVersion.bind(self))
+			Updater.addEvent('loaded', self.fillVersion.bind(self));
 
 		self.settings.createGroup({
 			'name': 'Help Support CouchPotato'
@@ -106,7 +106,7 @@ var AboutSettingTab = new Class({
 			new Element('div.donate', {
 				'html':
 				'Or support me via:' +
-				'<iframe src="http://couchpota.to/donate.html" style="border:none; height: 200px;" scrolling="no"></iframe>'
+				'<iframe src="https://couchpota.to/donate.html" style="border:none; height: 200px;" scrolling="no"></iframe>'
 			})
 		);
 

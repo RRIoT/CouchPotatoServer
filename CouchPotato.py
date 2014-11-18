@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import print_function
 from logging import handlers
 from os.path import dirname
 import logging
@@ -9,7 +10,6 @@ import socket
 import subprocess
 import sys
 import traceback
-import time
 
 # Root path
 base_path = dirname(os.path.abspath(__file__))
@@ -18,7 +18,12 @@ base_path = dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(base_path, 'libs'))
 
 from couchpotato.environment import Env
-from couchpotato.core.helpers.variable import getDataDir
+from couchpotato.core.helpers.variable import getDataDir, removePyc
+
+
+# Remove pyc files before dynamic load (sees .pyc files regular .py modules)
+removePyc(base_path)
+
 
 class Loader(object):
 
@@ -28,7 +33,7 @@ class Loader(object):
 
         # Get options via arg
         from couchpotato.runner import getOptions
-        self.options = getOptions(base_path, sys.argv[1:])
+        self.options = getOptions(sys.argv[1:])
 
         # Load settings
         settings = Env.get('settings')
@@ -49,7 +54,7 @@ class Loader(object):
         # Create logging dir
         self.log_dir = os.path.join(self.data_dir, 'logs');
         if not os.path.isdir(self.log_dir):
-            os.mkdir(self.log_dir)
+            os.makedirs(self.log_dir)
 
         # Logging
         from couchpotato.core.logger import CPLog
@@ -66,10 +71,11 @@ class Loader(object):
         signal.signal(signal.SIGTERM, lambda signum, stack_frame: sys.exit(1))
 
         from couchpotato.core.event import addEvent
-        addEvent('app.after_shutdown', self.afterShutdown)
+        addEvent('app.do_shutdown', self.setRestart)
 
-    def afterShutdown(self, restart):
+    def setRestart(self, restart):
         self.do_restart = restart
+        return True
 
     def onExit(self, signal, frame):
         from couchpotato.core.event import fireEvent
@@ -97,7 +103,6 @@ class Loader(object):
 
             # Release log files and shutdown logger
             logging.shutdown()
-            time.sleep(3)
 
             args = [sys.executable] + [os.path.join(base_path, os.path.basename(__file__))] + sys.argv[1:]
             subprocess.Popen(args)
@@ -132,14 +137,15 @@ if __name__ == '__main__':
         pass
     except SystemExit:
         raise
-    except socket.error as (nr, msg):
+    except socket.error as e:
         # log when socket receives SIGINT, but continue.
         # previous code would have skipped over other types of IO errors too.
+        nr, msg = e
         if nr != 4:
             try:
                 l.log.critical(traceback.format_exc())
             except:
-                print traceback.format_exc()
+                print(traceback.format_exc())
             raise
     except:
         try:
@@ -148,7 +154,7 @@ if __name__ == '__main__':
             if l:
                 l.log.critical(traceback.format_exc())
             else:
-                print traceback.format_exc()
+                print(traceback.format_exc())
         except:
-            print traceback.format_exc()
+            print(traceback.format_exc())
         raise

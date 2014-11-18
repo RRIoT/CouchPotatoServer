@@ -1,10 +1,14 @@
 import logging
 import re
 
+
 class CPLog(object):
 
     context = ''
     replace_private = ['api', 'apikey', 'api_key', 'password', 'username', 'h', 'uid', 'key', 'passkey']
+
+    Env = None
+    is_develop = False
 
     def __init__(self, context = ''):
         if context.endswith('.main'):
@@ -12,6 +16,20 @@ class CPLog(object):
 
         self.context = context
         self.logger = logging.getLogger()
+
+    def setup(self):
+
+        if not self.Env:
+            from couchpotato.environment import Env
+
+            self.Env = Env
+            self.is_develop = Env.get('dev')
+
+            from couchpotato.core.event import addEvent
+            addEvent('app.after_shutdown', self.close)
+
+    def close(self, *args, **kwargs):
+        logging.shutdown()
 
     def info(self, msg, replace_tuple = ()):
         self.logger.info(self.addContext(msg, replace_tuple))
@@ -36,23 +54,22 @@ class CPLog(object):
 
     def safeMessage(self, msg, replace_tuple = ()):
 
-        from couchpotato.environment import Env
-        from couchpotato.core.helpers.encoding import ss
+        from couchpotato.core.helpers.encoding import ss, toUnicode
 
         msg = ss(msg)
 
         try:
-            msg = msg % replace_tuple
-        except:
-            try:
-                if isinstance(replace_tuple, tuple):
-                    msg = msg % tuple([ss(x) for x in list(replace_tuple)])
-                else:
-                    msg = msg % ss(replace_tuple)
-            except Exception, e:
-                self.logger.error(u'Failed encoding stuff to log "%s": %s' % (msg, e))
+            if isinstance(replace_tuple, tuple):
+                msg = msg % tuple([ss(x) if not isinstance(x, (int, float)) else x for x in list(replace_tuple)])
+            elif isinstance(replace_tuple, dict):
+                msg = msg % dict((k, ss(v) if not isinstance(v, (int, float)) else v) for k, v in replace_tuple.iteritems())
+            else:
+                msg = msg % ss(replace_tuple)
+        except Exception as e:
+            self.logger.error('Failed encoding stuff to log "%s": %s' % (msg, e))
 
-        if not Env.get('dev'):
+        self.setup()
+        if not self.is_develop:
 
             for replace in self.replace_private:
                 msg = re.sub('(\?%s=)[^\&]+' % replace, '?%s=xxx' % replace, msg)
@@ -60,10 +77,10 @@ class CPLog(object):
 
             # Replace api key
             try:
-                api_key = Env.setting('api_key')
+                api_key = self.Env.setting('api_key')
                 if api_key:
                     msg = msg.replace(api_key, 'API_KEY')
             except:
                 pass
 
-        return msg
+        return toUnicode(msg)

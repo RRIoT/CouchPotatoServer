@@ -10,21 +10,21 @@ var NotificationBase = new Class({
 		// Listener
 		App.addEvent('unload', self.stopPoll.bind(self));
 		App.addEvent('reload', self.startInterval.bind(self, [true]));
-		App.addEvent('notification', self.notify.bind(self));
-		App.addEvent('message', self.showMessage.bind(self));
+		App.on('notification', self.notify.bind(self));
+		App.on('message', self.showMessage.bind(self));
 
 		// Add test buttons to settings page
-		App.addEvent('load', self.addTestButtons.bind(self));
+		App.addEvent('loadSettings', self.addTestButtons.bind(self));
 
 		// Notification bar
-		self.notifications = []
+		self.notifications = [];
 		App.addEvent('load', function(){
 
 			App.block.notification = new Block.Menu(self, {
 				'button_class': 'icon2.eye-open',
 				'class': 'notification_menu',
 				'onOpen': self.markAsRead.bind(self)
-			})
+			});
 			$(App.block.notification).inject(App.getBlock('search'), 'after');
 			self.badge = new Element('div.badge').inject(App.block.notification, 'top').hide();
 
@@ -40,7 +40,7 @@ var NotificationBase = new Class({
 		var self = this;
 
 		var added = new Date();
-			added.setTime(result.added*1000)
+			added.setTime(result.added*1000);
 
 		result.el = App.getBlock('notification').addLink(
 			new Element('span.'+(result.read ? 'read' : '' )).adopt(
@@ -50,9 +50,9 @@ var NotificationBase = new Class({
 		, 'top');
 		self.notifications.include(result);
 
-		if(result.data.important !== undefined && !result.read){
-			var sticky = true
-			App.fireEvent('message', [result.message, sticky, result])
+		if((result.important !== undefined || result.sticky !== undefined) && !result.read){
+			var sticky = true;
+			App.trigger('message', [result.message, sticky, result])
 		}
 		else if(!result.read){
 			self.setBadge(self.notifications.filter(function(n){ return !n.read}).length)
@@ -62,7 +62,7 @@ var NotificationBase = new Class({
 
 	setBadge: function(value){
 		var self = this;
-		self.badge.set('text', value)
+		self.badge.set('text', value);
 		self.badge[value ? 'show' : 'hide']()
 	},
 
@@ -72,12 +72,12 @@ var NotificationBase = new Class({
 
 		if(!force_ids) {
 			var rn = self.notifications.filter(function(n){
-				return !n.read && n.data.important === undefined
-			})
+				return !n.read && n.important === undefined
+			});
 
-			var ids = []
+			var ids = [];
 			rn.each(function(n){
-				ids.include(n.id)
+				ids.include(n._id)
 			})
 		}
 
@@ -103,8 +103,10 @@ var NotificationBase = new Class({
 
 		self.request = Api.request('notification.listener', {
     		'data': {'init':true},
-    		'onSuccess': self.processData.bind(self)
-		}).send()
+    		'onSuccess': function(json){
+				self.processData(json, true)
+			}
+		}).send();
 
 		setInterval(function(){
 
@@ -120,11 +122,16 @@ var NotificationBase = new Class({
 	startPoll: function(){
 		var self = this;
 
-		if(self.stopped || (self.request && self.request.isRunning()))
+		if(self.stopped)
 			return;
 
+		if(self.request && self.request.isRunning())
+			self.request.cancel();
+
 		self.request = Api.request('nonblock/notification.listener', {
-    		'onSuccess': self.processData.bind(self),
+    		'onSuccess': function(json){
+				self.processData(json, false)
+			},
     		'data': {
     			'last_id': self.last_id
     		},
@@ -137,27 +144,27 @@ var NotificationBase = new Class({
 
 	stopPoll: function(){
 		if(this.request)
-			this.request.cancel()
+			this.request.cancel();
 		this.stopped = true;
 	},
 
-	processData: function(json){
+	processData: function(json, init){
 		var self = this;
 
 		// Process data
-		if(json){
+		if(json && json.result){
 			Array.each(json.result, function(result){
-				App.fireEvent(result.type, result);
-				if(result.message && result.read === undefined)
+				App.trigger(result._t || result.type, [result]);
+				if(result.message && result.read === undefined && !init)
 					self.showMessage(result.message);
-			})
+			});
 
 			if(json.result.length > 0)
 				self.last_id = json.result.getLast().message_id
 		}
 
 		// Restart poll
-		self.startPoll()
+		self.startPoll.delay(1500, self);
 	},
 
 	showMessage: function(message, sticky, data){
@@ -176,18 +183,18 @@ var NotificationBase = new Class({
 		}, 10);
 
 		var hide_message = function(){
-			new_message.addClass('hide')
+			new_message.addClass('hide');
 			setTimeout(function(){
 				new_message.destroy();
 			}, 1000);
-		}
+		};
 
 		if(sticky)
 			new_message.grab(
 				new Element('a.close.icon2', {
 					'events': {
 						'click': function(){
-							self.markAsRead([data.id]);
+							self.markAsRead([data._id]);
 							hide_message();
 						}
 					}
@@ -202,7 +209,7 @@ var NotificationBase = new Class({
 	addTestButtons: function(){
 		var self = this;
 
-		var setting_page = App.getPage('Settings')
+		var setting_page = App.getPage('Settings');
 		setting_page.addEvent('create', function(){
 			Object.each(setting_page.tabs.notifications.groups, self.addTestButton.bind(self))
 		})

@@ -1,4 +1,4 @@
-var CouchPotato = new Class({
+﻿var CouchPotato = new Class({
 
 	Implements: [Events, Options],
 
@@ -11,11 +11,17 @@ var CouchPotato = new Class({
 	pages: [],
 	block: [],
 
+	initialize: function(){
+		var self = this;
+
+		self.global_events = {};
+	},
+
 	setup: function(options) {
 		var self = this;
 		self.setOptions(options);
 
-		self.c = $(document.body)
+		self.c = $(document.body);
 
 		self.route = new Route(self.defaults);
 
@@ -30,9 +36,9 @@ var CouchPotato = new Class({
 		History.addEvent('change', self.openPage.bind(self));
 		self.c.addEvent('click:relay(a[href^=/]:not([target]))', self.pushState.bind(self));
 		self.c.addEvent('click:relay(a[href^=http])', self.openDerefered.bind(self));
-		
+
 		// Check if device is touchenabled
-		self.touch_device = 'ontouchstart' in document.documentElement;
+		self.touch_device = 'ontouchstart' in window || navigator.msMaxTouchPoints;
 		if(self.touch_device)
 			self.c.addClass('touch_enabled');
 
@@ -49,12 +55,21 @@ var CouchPotato = new Class({
 
 	pushState: function(e){
 		var self = this;
-		if((!e.meta && Browser.Platform.mac) || (!e.control && !Browser.Platform.mac)){
+
+		if((!e.meta && self.isMac()) || (!e.control && !self.isMac())){
 			(e).preventDefault();
 			var url = e.target.get('href');
-			if(History.getPath() != url)
+
+			// Middle click
+			if(e.event && e.event.button == 1)
+				window.open(url);
+			else if(History.getPath() != url)
 				History.push(url);
 		}
+	},
+
+	isMac: function(){
+		return Browser.platform == 'mac'
 	},
 
 	createLayout: function(){
@@ -107,11 +122,11 @@ var CouchPotato = new Class({
 					'click': self.shutdownQA.bind(self)
 				}
 			})
-		]
-		
+		];
+
 		setting_links.each(function(a){
 			self.block.more.addLink(a)
-		})
+		});
 
 
 		new ScrollSpy({
@@ -128,15 +143,32 @@ var CouchPotato = new Class({
 	createPages: function(){
 		var self = this;
 
+		var pages = [];
 		Object.each(Page, function(page_class, class_name){
-			pg = new Page[class_name](self, {});
+			var pg = new Page[class_name](self, {});
 			self.pages[class_name] = pg;
 
-			$(pg).inject(self.content);
+			pages.include({
+				'order': pg.order,
+				'name': class_name,
+				'class': pg
+			});
 		});
+
+		pages.stableSort(self.sortPageByOrder).each(function(page){
+			page['class'].load();
+			self.fireEvent('load'+page.name);
+			$(page['class']).inject(self.content);
+		});
+
+		delete pages;
 
 		self.fireEvent('load');
 
+	},
+
+	sortPageByOrder: function(a, b){
+		return (a.order || 100) - (b.order || 100)
 	},
 
 	openPage: function(url) {
@@ -152,7 +184,7 @@ var CouchPotato = new Class({
 			return;
 
 		if(self.current_page)
-			self.current_page.hide()
+			self.current_page.hide();
 
 		try {
 			var page = self.pages[page_name] || self.pages.Home;
@@ -179,14 +211,14 @@ var CouchPotato = new Class({
 	shutdown: function(){
 		var self = this;
 
-		self.blockPage('You have shutdown. This is what suppose to happen ;)');
+		self.blockPage('You have shutdown. This is what is supposed to happen ;)');
 		Api.request('app.shutdown', {
 			'onComplete': self.blockPage.bind(self)
 		});
 		self.checkAvailable(1000);
 	},
 
-	shutdownQA: function(e){
+	shutdownQA: function(){
 		var self = this;
 
 		var q = new Question('Are you sure you want to shutdown CouchPotato?', '', [{
@@ -235,7 +267,7 @@ var CouchPotato = new Class({
 	checkForUpdate: function(onComplete){
 		var self = this;
 
-		Updater.check(onComplete)
+		Updater.check(onComplete);
 
 		self.blockPage('Please wait. If this takes too long, something must have gone wrong.', 'Checking for updates');
 		self.checkAvailable(3000);
@@ -246,14 +278,21 @@ var CouchPotato = new Class({
 
 		(function(){
 
-			Api.request('app.available', {
-				'onFailure': function(){
-					self.checkAvailable.delay(1000, self, [delay, onAvailable]);
-					self.fireEvent('unload');
+			var onFailure = function(){
+				self.checkAvailable.delay(1000, self, [delay, onAvailable]);
+				self.fireEvent('unload');
+			}
+
+			var request = Api.request('app.available', {
+				'timeout': 2000,
+				'onTimeout': function(){
+					request.cancel();
+					onFailure();
 				},
+				'onFailure': onFailure,
 				'onSuccess': function(){
 					if(onAvailable)
-						onAvailable()
+						onAvailable();
 					self.unBlockPage();
 					self.fireEvent('reload');
 				}
@@ -267,7 +306,6 @@ var CouchPotato = new Class({
 
 		self.unBlockPage();
 
-		var body = $(document.body);
 		self.mask = new Element('div.mask').adopt(
 			new Element('div').adopt(
 				new Element('h1', {'text': title || 'Unavailable'}),
@@ -293,11 +331,12 @@ var CouchPotato = new Class({
 	},
 
 	openDerefered: function(e, el){
+		var self = this;
 		(e).stop();
 
 		var url = 'http://www.dereferer.org/?' + el.get('href');
 
-		if(el.get('target') == '_blank' || (e.meta && Browser.Platform.mac) || (e.control && !Browser.Platform.mac))
+		if(el.get('target') == '_blank' || (e.meta && self.isMac()) || (e.control && !self.isMac()))
 			window.open(url);
 		else
 			window.location = url;
@@ -309,8 +348,8 @@ var CouchPotato = new Class({
 
 		return new Element('div.group_userscript').adopt(
 			new Element('a.userscript.button', {
-				'text': 'Install userscript',
-				'href': Api.createUrl('userscript.get')+randomString()+'/couchpotato.user.js',
+				'text': 'Install extension',
+				'href': 'https://couchpota.to/extension/',
 				'target': '_blank'
 			}),
 			new Element('span.or[text=or]'),
@@ -324,7 +363,7 @@ var CouchPotato = new Class({
 					'target': '',
 					'events': {
 						'click': function(e){
-							(e).stop()
+							(e).stop();
 							alert('Drag it to your bookmark ;)')
 						}
 					}
@@ -334,6 +373,66 @@ var CouchPotato = new Class({
 				})
 			)
 		);
+	},
+
+	/*
+	 * Global events
+	 */
+	on: function(name, handle){
+		var self = this;
+
+		if(!self.global_events[name])
+			self.global_events[name] = [];
+
+		self.global_events[name].push(handle);
+
+	},
+
+	trigger: function(name, args, on_complete){
+		var self = this;
+
+		if(!self.global_events[name]){ return; }
+
+		if(!on_complete && typeOf(args) == 'function'){
+			on_complete = args;
+			args = [];
+		}
+
+		// Create parallel callback
+		var callbacks = [];
+		self.global_events[name].each(function(handle){
+
+			callbacks.push(function(callback){
+				var results = handle.apply(handle, args || []);
+				callback(null, results || null);
+			});
+
+		});
+
+		// Fire events
+		async.parallel(callbacks, function(err, results){
+			if(err) p(err);
+
+			if(on_complete)
+				on_complete(results);
+		});
+
+	},
+
+	off: function(name, handle){
+		var self = this;
+
+		if(!self.global_events[name]) return;
+
+		// Remove single
+		if(handle){
+			self.global_events[name] = self.global_events[name].erase(handle);
+		}
+		// Reset full event
+		else {
+			self.global_events[name] = [];
+		}
+
 	}
 
 });
@@ -347,35 +446,35 @@ var Route = new Class({
 	params: {},
 
 	initialize: function(defaults){
-		var self = this
+		var self = this;
 		self.defaults = defaults
 	},
 
 	parse: function(){
 		var self = this;
 
-		var rep = function(pa){
+		var rep = function (pa) {
 			return pa.replace(Api.getOption('url'), '/').replace(App.getOption('base_url'), '/')
-		}
+		};
 
-		var path = rep(History.getPath())
+		var path = rep(History.getPath());
 		if(path == '/' && location.hash){
 			path = rep(location.hash.replace('#', '/'))
 		}
-		self.current = path.replace(/^\/+|\/+$/g, '')
-		var url = self.current.split('/')
+		self.current = path.replace(/^\/+|\/+$/g, '');
+		var url = self.current.split('/');
 
-		self.page = (url.length > 0) ? url.shift() : self.defaults.page
-		self.action = (url.length > 0) ? url.shift() : self.defaults.action
+		self.page = (url.length > 0) ? url.shift() : self.defaults.page;
+		self.action = (url.length > 0) ? url.shift() : self.defaults.action;
 
 		self.params = Object.merge({}, self.defaults.params);
 		if(url.length > 1){
-			var key
+			var key;
 			url.each(function(el, nr){
 				if(nr%2 == 0)
-					key = el
+					key = el;
 				else if(key) {
-					self.params[key] = el
+					self.params[key] = el;
 					key = null
 				}
 			})
@@ -483,8 +582,8 @@ function randomString(length, extra) {
 
 	var comparer = function(a, b) {
 		for (var i = 0, l = keyPaths.length; i < l; i++) {
-			aVal = valueOf(a, keyPaths[i].path);
-			bVal = valueOf(b, keyPaths[i].path);
+			var aVal = valueOf(a, keyPaths[i].path),
+				bVal = valueOf(b, keyPaths[i].path);
 			if (aVal > bVal) return keyPaths[i].sign;
 			if (aVal < bVal) return -keyPaths[i].sign;
 		}
@@ -501,7 +600,7 @@ function randomString(length, extra) {
 					case "string": saveKeyPath(argument.match(/[+-]|[^.]+/g)); break;
 				}
 			});
-			return this.sort(comparer);
+			return this.stableSort(comparer);
 		}
 	});
 
@@ -525,4 +624,4 @@ var createSpinner = function(target, options){
 	}, options);
 
 	return new Spinner(opts).spin(target);
-}
+};

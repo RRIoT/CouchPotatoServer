@@ -1,7 +1,7 @@
 from couchpotato.api import addApiView
 from couchpotato.core.event import addEvent
 from couchpotato.core.logger import CPLog
-from couchpotato.core.providers.base import Provider
+from couchpotato.core.media._base.providers.base import Provider
 from couchpotato.environment import Env
 
 log = CPLog(__name__)
@@ -15,9 +15,10 @@ class Notification(Provider):
     test_message = 'ZOMG Lazors Pewpewpew!'
 
     listen_to = [
+        'media.available',
         'renamer.after', 'movie.snatched',
         'updater.available', 'updater.updated',
-        'core.message',
+        'core.message.important',
     ]
     dont_listen_to = []
 
@@ -32,7 +33,9 @@ class Notification(Provider):
                 addEvent(listener, self.createNotifyHandler(listener))
 
     def createNotifyHandler(self, listener):
-        def notify(message = None, group = {}, data = None):
+        def notify(message = None, group = None, data = None):
+            if not group: group = {}
+
             if not self.conf('on_snatch', default = True) and listener == 'movie.snatched':
                 return
             return self._notify(message = message, data = data if data else group, listener = listener)
@@ -45,9 +48,10 @@ class Notification(Provider):
     def _notify(self, *args, **kwargs):
         if self.isEnabled():
             return self.notify(*args, **kwargs)
+        return False
 
-    def notify(self, message = '', data = {}, listener = None):
-        pass
+    def notify(self, message = '', data = None, listener = None):
+        if not data: data = {}
 
     def test(self, **kwargs):
 

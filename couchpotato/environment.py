@@ -1,10 +1,11 @@
+import os
+
+from couchpotato.core.database import Database
 from couchpotato.core.event import fireEvent, addEvent
+from couchpotato.core.helpers.encoding import toUnicode
 from couchpotato.core.loader import Loader
 from couchpotato.core.settings import Settings
-from sqlalchemy.engine import create_engine
-from sqlalchemy.orm import scoped_session
-from sqlalchemy.orm.session import sessionmaker
-import os
+
 
 class Env(object):
 
@@ -16,6 +17,7 @@ class Env(object):
     _debug = False
     _dev = False
     _settings = Settings()
+    _database = Database()
     _loader = Loader()
     _cache = None
     _options = None
@@ -23,13 +25,13 @@ class Env(object):
     _quiet = False
     _daemonized = False
     _desktop = None
-    _session = None
+    _http_opener = None
 
     ''' Data paths and directories '''
     _app_dir = ""
     _data_dir = ""
     _cache_dir = ""
-    _db_path = ""
+    _db = ""
     _log_path = ""
 
     @staticmethod
@@ -37,8 +39,11 @@ class Env(object):
         return Env._debug
 
     @staticmethod
-    def get(attr):
-        return getattr(Env, '_' + attr)
+    def get(attr, unicode = False):
+        if unicode:
+            return toUnicode(getattr(Env, '_' + attr))
+        else:
+            return getattr(Env, '_' + attr)
 
     @staticmethod
     def all():
@@ -53,31 +58,16 @@ class Env(object):
         return setattr(Env, '_' + attr, value)
 
     @staticmethod
-    def getSession(engine = None):
-        existing_session = Env.get('session')
-        if existing_session:
-            return existing_session
-
-        engine = Env.getEngine()
-        session = scoped_session(sessionmaker(bind = engine))
-        Env.set('session', session)
-
-        return session
-
-    @staticmethod
-    def getEngine():
-        return create_engine(Env.get('db_path'), echo = False, pool_recycle = 30)
-
-    @staticmethod
     def setting(attr, section = 'core', value = None, default = '', type = None):
 
         s = Env.get('settings')
 
         # Return setting
-        if value == None:
+        if value is None:
             return s.get(attr, default = default, section = section, type = type)
 
         # Set setting
+        s.addSection(section)
         s.set(section, attr, value)
         s.save()
 
@@ -86,7 +76,7 @@ class Env(object):
     @staticmethod
     def prop(identifier, value = None, default = None):
         s = Env.get('settings')
-        if value == None:
+        if value is None:
             v = s.getProperty(identifier)
             return v if v else default
 

@@ -1,6 +1,7 @@
 # axel.py
 #
 # Copyright (C) 2010 Adrian Cristea adrian dot cristea at gmail dotcom
+# Edits by Ruud Burger
 #
 # Based on an idea by Peter Thatcher, found on
 # http://www.valuedlessons.com/2008/04/events-in-python.html
@@ -11,11 +12,13 @@
 # Source: http://pypi.python.org/pypi/axel
 # Docs:   http://packages.python.org/axel
 
-from couchpotato.core.helpers.variable import natcmp
-import Queue
+from Queue import Empty, Queue
 import hashlib
 import sys
 import threading
+
+from couchpotato.core.helpers.variable import natsortKey
+
 
 class Event(object):
     """
@@ -140,7 +143,7 @@ class Event(object):
 
     def fire(self, *args, **kwargs):
         """ Stores all registered handlers in a queue for processing """
-        self.queue = Queue.Queue()
+        self.queue = Queue()
         result = {}
 
         if self.handlers:
@@ -158,7 +161,10 @@ class Event(object):
                 t.daemon = True
                 t.start()
 
-            for handler in sorted(self.handlers.iterkeys(), cmp = natcmp):
+            handler_keys = self.handlers.keys()
+            handler_keys.sort(key = natsortKey)
+
+            for handler in handler_keys:
                 self.queue.put(handler)
 
                 if self.asynchronous:
@@ -229,16 +235,16 @@ class Event(object):
                         self.error_handler(sys.exc_info())
                 finally:
 
-                    if not self.asynchronous:
-                        self.queue.task_done()
-
                     if order_lock:
                         order_lock.release()
 
-                    if self.queue.empty():
-                        raise Queue.Empty
+                    if not self.asynchronous:
+                        self.queue.task_done()
 
-            except Queue.Empty:
+                    if self.queue.empty():
+                        raise Empty
+
+            except Empty:
                 break
 
     def _extract(self, queue_item):
